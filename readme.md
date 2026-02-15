@@ -1,20 +1,21 @@
-# OneLive 2.0
+# OneLive 2.1
 
-**OneLive** — это «весёлый» Python-раннер: запускает `.py` файл, модуль (`-m`) или команду (`-c`), а при ошибках может автоматически вызывать `curl` с ASCII-анимацией.
+**OneLive** — это «весёлый» Python-раннер: запускает `.py` файл, модуль (`-m`) или команду (`-c`), а при ошибках вызывает **оригинальный рикролл** через `curl ASCII.live/can-you-hear-me`.
 
 ## Что обновлено (2026)
 
 - Современный CLI на `argparse`.
 - Поддержка запуска файла, модуля и inline-команды.
+- Передача аргументов в запускаемый код (`script_args`).
+- Опция `--cwd` для запуска скрипта в нужной рабочей директории.
 - Гибкая обработка ошибок и опциональный traceback.
-- Настраиваемый URL для fallback-команды.
-- Улучшенная сборка в standalone executable (`.exe`) через **PyInstaller**.
-- Добавлены dev-инструменты: `pytest`, `ruff`.
+- Сборка в standalone executable (`.exe`) через **PyInstaller**.
+- Добавлены проверки в **GitHub Actions** (lint, unit-tests, build smoke test).
 
 ## Требования
 
 - Python **3.12+**
-- `curl` (если используете рикролл-режим)
+- `curl` (для рикролл-режима)
 
 ## Быстрый старт
 
@@ -25,10 +26,18 @@ pip install -U pip
 pip install -r requirements-dev.txt
 ```
 
+## Использование
+
 Запуск файла:
 
 ```bash
 python onelive.py script.py
+```
+
+Запуск файла + аргументы для скрипта:
+
+```bash
+python onelive.py script.py arg1 arg2
 ```
 
 Запуск модуля:
@@ -43,7 +52,13 @@ python onelive.py -m http.server
 python onelive.py -c "print('Hello from OneLive')"
 ```
 
-Отключить curl fallback:
+Запуск из другой директории:
+
+```bash
+python onelive.py app/main.py --cwd app
+```
+
+Отключить рикролл:
 
 ```bash
 python onelive.py broken.py --no-rickroll
@@ -57,7 +72,7 @@ python onelive.py broken.py --traceback
 
 ## Сборка `.exe`
 
-### Вариант 1: через скрипт
+Через скрипт:
 
 ```bash
 python scripts/build_exe.py --clean --name onelive
@@ -68,20 +83,19 @@ python scripts/build_exe.py --clean --name onelive
 - Windows: `dist/onelive.exe`
 - Linux/macOS: `dist/onelive`
 
-### Вариант 2: вручную через PyInstaller
+## CI / GitHub Actions
+
+Workflow: `.github/workflows/ci.yml`
+
+Проверяет:
+
+- `ruff check .`
+- `unittest`
+- smoke build через `scripts/build_exe.py`
+
+## Проверки локально
 
 ```bash
-python -m PyInstaller --onefile --console --name onelive onelive.py
-```
-
-## Проверки качества
-
-```bash
-python -m pytest
+python -m unittest discover -s tests -q
 python -m ruff check .
 ```
-
-## Примечания
-
-- Если `curl` не установлен, OneLive покажет предупреждение и завершит fallback без падения приложения.
-- Сборка должна выполняться на целевой ОС (для `.exe` — на Windows).

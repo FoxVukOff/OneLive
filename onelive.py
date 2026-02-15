@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import runpy
 import subprocess
@@ -12,17 +13,17 @@ import traceback
 from dataclasses import dataclass
 from typing import Iterable
 
-DEFAULT_RICKROLL_URL = "https://ascii.live/can-you-hear-me"
+RICKROLL_URL = "ASCII.live/can-you-hear-me"
 
 
 @dataclass(slots=True)
 class Config:
     """Runtime settings for OneLive."""
 
-    rickroll_url: str = DEFAULT_RICKROLL_URL
     no_rickroll: bool = False
     timeout: int = 15
     show_traceback: bool = False
+    cwd: str | None = None
 
 
 def trigger_rickroll(config: Config) -> int:
@@ -30,10 +31,10 @@ def trigger_rickroll(config: Config) -> int:
     if config.no_rickroll:
         return 0
 
-    print(f"[OneLive] Запускаю: curl {config.rickroll_url}")
+    print(f"[OneLive] Запускаю: curl {RICKROLL_URL}")
     try:
         process = subprocess.run(
-            ["curl", "-L", config.rickroll_url],
+            ["curl", RICKROLL_URL],
             check=False,
             timeout=config.timeout,
         )
@@ -46,9 +47,16 @@ def trigger_rickroll(config: Config) -> int:
         return 124
 
 
-def execute_source(source: str, origin: str, config: Config) -> int:
+def execute_source(source: str, origin: str, config: Config, script_argv: list[str] | None = None) -> int:
     """Execute user Python source and handle exceptions."""
     namespace = {"__name__": "__main__", "__file__": origin}
+    old_argv = sys.argv[:]
+    old_cwd = pathlib.Path.cwd()
+
+    sys.argv = [origin, *(script_argv or [])]
+    if config.cwd:
+        os.chdir(config.cwd)
+
     try:
         compiled = compile(source, origin, "exec")
         exec(compiled, namespace)
@@ -65,20 +73,31 @@ def execute_source(source: str, origin: str, config: Config) -> int:
             traceback.print_exc()
         trigger_rickroll(config)
         return 1
+    finally:
+        sys.argv = old_argv
+        if config.cwd:
+            os.chdir(old_cwd)
 
 
-def run_file(path: pathlib.Path, config: Config) -> int:
+def run_file(path: pathlib.Path, config: Config, script_argv: list[str] | None = None) -> int:
     """Execute Python file by path."""
     if not path.exists():
         print(f"[OneLive] Файл не найден: {path}")
         return 2
 
     source = path.read_text(encoding="utf-8")
-    return execute_source(source=source, origin=str(path), config=config)
+    return execute_source(source=source, origin=str(path), config=config, script_argv=script_argv)
 
 
-def run_module(module_name: str, config: Config) -> int:
+def run_module(module_name: str, config: Config, script_argv: list[str] | None = None) -> int:
     """Execute module with runpy and process errors uniformly."""
+    old_argv = sys.argv[:]
+    old_cwd = pathlib.Path.cwd()
+
+    sys.argv = [module_name, *(script_argv or [])]
+    if config.cwd:
+        os.chdir(config.cwd)
+
     try:
         runpy.run_module(module_name, run_name="__main__")
         return 0
@@ -88,6 +107,10 @@ def run_module(module_name: str, config: Config) -> int:
             traceback.print_exc()
         trigger_rickroll(config)
         return 1
+    finally:
+        sys.argv = old_argv
+        if config.cwd:
+            os.chdir(old_cwd)
 
 
 def parse_args(argv: Iterable[str]) -> argparse.Namespace:
@@ -99,11 +122,6 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     mode.add_argument("file", nargs="?", help="Путь к .py файлу.")
     mode.add_argument("-m", "--module", help="Имя Python-модуля для запуска.")
     mode.add_argument("-c", "--command", help="Python-код в виде строки для выполнения.")
-    parser.add_argument(
-        "--rickroll-url",
-        default=DEFAULT_RICKROLL_URL,
-        help="URL для curl при перехвате ошибки.",
-    )
     parser.add_argument(
         "--no-rickroll",
         action="store_true",
@@ -120,27 +138,29 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
         action="store_true",
         help="Показывать полный traceback при ошибках.",
     )
-    parser.add_argument("--version", action="version", version="OneLive 2.0.0")
+    parser.add_argument("--cwd", help="Рабочая директория для запуска кода.")
+    parser.add_argument("script_args", nargs="*", help="Аргументы, передаваемые выполняемому коду.")
+    parser.add_argument("--version", action="version", version="OneLive 2.1.0")
     return parser.parse_args(list(argv))
 
 
 def main(argv: Iterable[str] | None = None) -> int:
     args = parse_args(argv if argv is not None else sys.argv[1:])
     config = Config(
-        rickroll_url=args.rickroll_url,
         no_rickroll=args.no_rickroll,
         timeout=max(1, args.timeout),
         show_traceback=args.traceback,
+        cwd=args.cwd,
     )
 
     if args.command:
-        return execute_source(source=args.command, origin="<command>", config=config)
+        return execute_source(source=args.command, origin="<command>", config=config, script_argv=args.script_args)
 
     if args.module:
-        return run_module(args.module, config)
+        return run_module(args.module, config, script_argv=args.script_args)
 
     assert args.file is not None
-    return run_file(pathlib.Path(args.file), config=config)
+    return run_file(pathlib.Path(args.file), config=config, script_argv=args.script_args)
 
 
 if __name__ == "__main__":
